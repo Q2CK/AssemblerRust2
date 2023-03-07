@@ -1,5 +1,6 @@
 {
   "cpu_data": {
+    "name": "AnPU Nano Prot. 1",
     "instruction_length": 16,
     "program_memory_lines": 64
   },
