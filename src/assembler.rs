@@ -3,21 +3,27 @@ use serde_derive::Deserialize;
 use std::fs::File;
 use std::io::Read;
 
-#[derive(Debug, Deserialize)]
+const ISA_ERR_MSG: &str = "Couldn't read isa file";
+const ASM_ERR_MSG: &str = "Couldn't read asm file";
+
+#[allow(dead_code)]
+#[derive(/*Debug,*/ Deserialize)]
 struct CpuData {
     cpu_name: String,
     instruction_length: usize,
     program_memory_lines: usize
 }
 
-#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+#[derive(/*Debug,*/ Deserialize)]
 struct Instruction {
     opcode: String,
     operands: Vec<String>,
     keywords: Vec<String>
 }
 
-#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+#[derive(/*Debug,*/ Deserialize)]
 struct ISA {
     cpu_data: CpuData,
     define: HashMap<String, HashMap<String, String>>,
@@ -31,56 +37,86 @@ struct Error {
 }
 
 struct AssemblerResult{
-    successes: Vec<String>,
+    info: Vec<String>,
     fails: Vec<Error>
 }
 
 impl AssemblerResult {
     fn report(&self) {
-        if self.fails.len() == 0 {
-            for element in &self.successes {
-                println!("{}", element);
-            }
-        }
-        else {
-            for element in &self.fails {
-                match element.line {
-                    Some(nr) => println!(r#"File "{}", line {}: {}"#, element.file, nr, element.message),
-                    None => println!(r#"File "{}": {}"#, element.file, element.message)
+        match self.fails.len(){
+            0 =>
+                for element in &self.info {
+                    println!("{}", element);
+                },
+            _ =>
+                for element in &self.fails {
+                    match element.line {
+                        Some(nr) => println!(r#"File "{}", line {}: {}"#, element.file, nr, element.message),
+                        None => println!(r#"File "{}": {}"#, element.file, element.message)
+                    }
                 }
-            }
         }
     }
 }
 
-fn deserialize_json(file_name: &str) -> serde_json::Result<ISA> {
-    let mut file = File::open(file_name).unwrap();
+fn deserialize_json_file(file_name: &str) -> Result<ISA, String> {
+    let mut file;
+    match File::open(file_name) {
+        Ok(v) => file = v,
+        Err(_) => return Err(ISA_ERR_MSG.to_string())
+    }
+
     let mut contents = String::new();
-    file.read_to_string(&mut contents).expect("Couldn't read to string");
-    return serde_json::from_str(&contents);
+    file.read_to_string(&mut contents).expect(ISA_ERR_MSG);
+
+    match serde_json::from_str(&contents) {
+        Ok(v) => Ok(v),
+        Err(_) => Err(ISA_ERR_MSG.to_string())
+    }
 }
 
 pub fn assemble() {
     loop {
-        let isa_file_name = String::from("AnPUNano.json");
-        let isa;
-        let isa_result: serde_json::Result<ISA> = deserialize_json(&isa_file_name);
-
         let mut assembler_result = AssemblerResult {
-            successes: Vec::new(),
+            info: Vec::new(),
             fails: Vec::new()
         };
 
+        let isa_file_name = String::from("AnPUNano.json");
+        let isa;
+        let isa_result = deserialize_json_file(&isa_file_name);
+
+        let assembly_file_name = String::from("test.asm");
+        let assembly;
+
+        match File::open(&assembly_file_name) {
+            Ok(v) => assembly = v,
+            Err(e) => assembler_result.fails.push(Error {
+                file: assembly_file_name,
+                line: None,
+                message: ASM_ERR_MSG.to_string()
+            })
+        }
+
         if isa_result.is_ok() {
             isa = isa_result.unwrap();
+            assembler_result.info.push(isa.cpu_data.cpu_name);
+            assembler_result.info.push("------------------------".to_string());
         }
         else {
             let serde_error_msg = isa_result.err().unwrap();
             assembler_result.fails.push(Error {
                 file: isa_file_name,
                 line: None,
-                message: format!("Invalid .json ISA specification - {}", serde_error_msg)
+                message: format!("Invalid ISA specification - {}", serde_error_msg)
             });
+            assembler_result.report();
+            break;
         }
+
+
+
+        assembler_result.report();
+        break;
     }
 }
