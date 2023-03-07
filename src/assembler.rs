@@ -114,6 +114,8 @@ pub fn assemble() {
             break;
         }
 
+
+
         assembler_result.report();
         break;
     }
