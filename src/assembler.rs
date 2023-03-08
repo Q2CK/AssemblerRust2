@@ -1,8 +1,7 @@
-use std::borrow::BorrowMut;
 use std::collections::HashMap;
 use serde_derive::Deserialize;
 use std::fs::File;
-use std::io::{Read, stdin, stdout, Write};
+use std::io::{Read, stdin};
 
 const ISA_VALIDATION_ERR_MSG: &str = "Invalid ISA file structure";
 const ISA_READ_ERR_MSG: &str = "Couldn't read ISA file";
@@ -69,7 +68,7 @@ fn deserialize_json_file(file_name: &String) -> Result<ISA, String> {
 
     let mut contents = String::new();
     match file.read_to_string(&mut contents) {
-        Ok(v) => (),
+        Ok(_) => (),
         Err(_) => return Err(ISA_READ_ERR_MSG.to_string())
     }
 
@@ -92,7 +91,7 @@ fn read_assembly(file_name: &String) -> Result<String, String> {
     }
 }
 
-fn open_files(mut isa: &mut Option<ISA>, mut asm: &mut String, mut bin: &mut String, mut assembler_result: &mut AssemblerResult) {
+fn open_files(isa: &mut Option<ISA>, asm: &mut String, bin: &mut String, assembler_result: &mut AssemblerResult) {
     let mut isa_file_name = String::new();
     println!("\nISA file name: ");
     stdin().read_line(&mut isa_file_name).unwrap();
