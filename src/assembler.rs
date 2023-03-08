@@ -66,7 +66,7 @@ impl AssemblerResult {
             _ =>
                 for element in &self.fails {
                     match element.line {
-                        Some(nr) => println!(r#"File "{}", line {}: {}"#, element.file, nr, element.message),
+                        Some(nr) => println!(r#"File "{}", line {}: {}"#, element.file, nr + 1, element.message),
                         None => println!(r#"File "{}": {}"#, element.file, element.message)
                     }
                 }
@@ -138,6 +138,69 @@ fn open_files(isa: &mut Option<ISA>, asm: &mut String, assembler_result: &mut As
     return (isa_file_name, asm_file_name)
 }
 
+fn parse(isa: &ISA, isa_file_name: &String, asm: &String, asm_file_name: &String, assembler_result: &mut AssemblerResult) {
+    let mut asm_lines: Vec<String> = asm.split("\n").map(str::to_string).collect();
+    for i in 0..asm_lines.len() {
+        let line = asm_lines[i].trim();
+        let mut tokens: Vec<&str> = line.split(|c| c == ',' || c == ' ').collect();
+
+        let mut j = 0;
+        while j < tokens.len() {
+            if tokens[j] == "" {
+                tokens.remove(j);
+            }
+            else {
+                j += 1;
+            }
+        }
+
+        println!("{:?}", tokens);
+
+        let mnemonic = tokens[0];
+        if isa.instructions.contains_key(mnemonic) {
+            let instruction: &Instruction = &isa.instructions[mnemonic];
+
+            let mut binary = instruction.opcode.clone();
+
+            for j in 1..tokens.len() {
+                let operand = tokens[j].trim();
+
+                let operand_parsed: usize;
+                match operand.parse() {
+                    Ok(v) => operand_parsed = v,
+                    Err(_) => {
+                        assembler_result.fails.push(Error::in_line(&asm_file_name, &i,
+                        &format!(r#"Failed to parse operand "{}""#, operand)));
+                        continue;
+                    }
+                }
+
+                let operand_bin_template = instruction.operands[j - 1].trim();
+                let operand_bin_len = operand_bin_template.len();
+
+                let operand_bin;
+
+                if operand_bin_template.starts_with("-") {
+                    operand_bin = format!("{operand_parsed:b}");
+                }
+                else {
+                    let zero = "0";
+                    operand_bin = format!("{zero:0>0$}", operand_bin_len)
+                }
+
+                binary += &format!("{operand_bin:0>0$}", operand_bin_len);
+            }
+
+            println!("{}", binary);
+
+        }
+        else {
+            assembler_result.fails.push(Error::in_line(&asm_file_name, &i,
+                &format!(r#"Unknown instruction mnemonic "{}""#, mnemonic)));
+        }
+    }
+}
+
 pub fn assemble() {
     loop {
         let mut assembler_result = AssemblerResult {
@@ -157,65 +220,11 @@ pub fn assemble() {
 
         let isa = isa.unwrap();
 
-        let mut asm_lines: Vec<String> = asm.split("\n").map(str::to_string).collect();
-        for i in 0..asm_lines.len() {
-            let line = asm_lines[i].trim();
-            let mut tokens: Vec<&str> = line.split(|c| c == ',' || c == ' ').collect();
+        parse(&isa, &isa_file_name, &asm, &asm_file_name, &mut assembler_result);
 
-            let mut j = 0;
-            while j < tokens.len() {
-                if tokens[j] == "" {
-                    tokens.remove(j);
-                }
-                else {
-                    j += 1;
-                }
-            }
-
-            println!("{:?}", tokens);
-
-            let mnemonic = tokens[0];
-
-            if isa.instructions.contains_key(mnemonic) {
-                let instruction: &Instruction = &isa.instructions[mnemonic];
-
-                let mut binary = instruction.opcode.clone();
-
-                for j in 1..tokens.len() {
-                    let operand = tokens[j].trim();
-
-                    let operand_parsed: usize;
-                    match operand.parse() {
-                        Ok(v) => operand_parsed = v,
-                        Err(_) => {
-                            assembler_result.fails.push(Error::in_line(&asm_file_name, &i,
-                            &"Failed to parse operand into number".to_string()));
-                            continue;
-                        }
-                    }
-
-                    let operand_bin_template = instruction.operands[j - 1].trim();
-                    let operand_bin_len = operand_bin_template.len();
-
-                    let operand_bin;
-
-                    if operand_bin_template.starts_with("-") {
-                        operand_bin = format!("{operand_parsed:b}");
-                    }
-                    else {
-                        let zero = "0";
-                        operand_bin = format!("{zero:0>0$}", operand_bin_len)
-                    }
-
-                    binary += &format!("{operand_bin:0>0$}", operand_bin_len);
-                }
-
-                println!("{}", binary);
-
-            }
-            else {
-                assembler_result.fails.push(Error::in_line(&isa_file_name, &i,&asm_file_name))
-            }
+        if assembler_result.fails.len() != 0 {
+            assembler_result.report();
+            continue;
         }
     }
 }
