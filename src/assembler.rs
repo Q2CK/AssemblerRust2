@@ -1,10 +1,12 @@
+use std::borrow::BorrowMut;
 use std::collections::HashMap;
 use serde_derive::Deserialize;
 use std::fs::File;
-use std::io::Read;
+use std::io::{Read, stdin, stdout, Write};
 
-const ISA_ERR_MSG: &str = "Couldn't read isa file";
-const ASM_ERR_MSG: &str = "Couldn't read asm file";
+const ISA_VALIDATION_ERR_MSG: &str = "Invalid ISA file structure";
+const ISA_READ_ERR_MSG: &str = "Couldn't read ISA file";
+const ASM_ERR_MSG: &str = "Couldn't read ASM file";
 
 #[allow(dead_code)]
 #[derive(/*Debug,*/ Deserialize)]
@@ -59,19 +61,73 @@ impl AssemblerResult {
     }
 }
 
-fn deserialize_json_file(file_name: &str) -> Result<ISA, String> {
-    let mut file;
-    match File::open(file_name) {
-        Ok(v) => file = v,
-        Err(_) => return Err(ISA_ERR_MSG.to_string())
-    }
+fn deserialize_json_file(file_name: &String) -> Result<ISA, String> {
+    let mut file = match File::open(file_name) {
+        Ok(v) => v,
+        Err(_) => return Err(ISA_READ_ERR_MSG.to_string())
+    };
 
     let mut contents = String::new();
-    file.read_to_string(&mut contents).expect(ISA_ERR_MSG);
+    match file.read_to_string(&mut contents) {
+        Ok(v) => (),
+        Err(_) => return Err(ISA_READ_ERR_MSG.to_string())
+    }
 
     match serde_json::from_str(&contents) {
         Ok(v) => Ok(v),
-        Err(_) => Err(ISA_ERR_MSG.to_string())
+        Err(_) => Err(ISA_VALIDATION_ERR_MSG.to_string())
+    }
+}
+
+fn read_assembly(file_name: &String) -> Result<String, String> {
+    let mut file = match File::open(file_name) {
+        Ok(v) => v,
+        Err(_) => return Err(ASM_ERR_MSG.to_string())
+    };
+
+    let mut contents = String::new();
+    match file.read_to_string(&mut contents) {
+        Ok(v) => Ok(v.to_string()),
+        Err(_) => Err(ASM_ERR_MSG.to_string())
+    }
+}
+
+fn open_files(mut isa: &mut Option<ISA>, mut asm: &mut String, mut bin: &mut String, mut assembler_result: &mut AssemblerResult) {
+    let mut isa_file_name = String::new();
+    println!("\nISA file name: ");
+    stdin().read_line(&mut isa_file_name).unwrap();
+    isa_file_name = format!("ISA/{}", isa_file_name[0..isa_file_name.len() - 1].to_string());
+    let isa_result = deserialize_json_file(&isa_file_name);
+
+    let mut asm_file_name = String::new();
+    println!("ASM file name: ");
+    stdin().read_line(&mut asm_file_name).unwrap();
+    asm_file_name = format!("ASM/{}", asm_file_name[0..asm_file_name.len() - 1].to_string());
+    let asm_result = read_assembly(&asm_file_name);
+
+    match asm_result {
+        Ok(v) => *asm = v,
+        Err(e) => assembler_result.fails.push(Error {
+            file: asm_file_name,
+            line: None,
+            message: e
+        })
+    }
+
+    match isa_result {
+        Ok(v) => {
+            assembler_result.info.push(v.cpu_data.cpu_name.clone());
+            assembler_result.info.push("------------------------".to_string());
+            *isa = Some(v);
+        }
+        Err(e) => {
+            assembler_result.fails.push(Error {
+                file: isa_file_name,
+                line: None,
+                message: e
+            });
+            assembler_result.report();
+        }
     }
 }
 
@@ -82,41 +138,10 @@ pub fn assemble() {
             fails: Vec::new()
         };
 
-        let isa_file_name = String::from("AnPUNano.json");
-        let isa;
-        let isa_result = deserialize_json_file(&isa_file_name);
+        let mut isa = None;
+        let mut asm = String::new();
+        let mut bin = String::new();
 
-        let assembly_file_name = String::from("test.asm");
-        let assembly;
-
-        match File::open(&assembly_file_name) {
-            Ok(v) => assembly = v,
-            Err(e) => assembler_result.fails.push(Error {
-                file: assembly_file_name,
-                line: None,
-                message: ASM_ERR_MSG.to_string()
-            })
-        }
-
-        if isa_result.is_ok() {
-            isa = isa_result.unwrap();
-            assembler_result.info.push(isa.cpu_data.cpu_name);
-            assembler_result.info.push("------------------------".to_string());
-        }
-        else {
-            let serde_error_msg = isa_result.err().unwrap();
-            assembler_result.fails.push(Error {
-                file: isa_file_name,
-                line: None,
-                message: format!("Invalid ISA specification - {}", serde_error_msg)
-            });
-            assembler_result.report();
-            break;
-        }
-
-
-
-        assembler_result.report();
-        break;
+        open_files(&mut isa, &mut asm, &mut bin, &mut assembler_result);
     }
 }
