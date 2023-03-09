@@ -66,8 +66,8 @@ impl AssemblerResult {
             _ =>
                 for element in &self.fails {
                     match element.line {
-                        Some(nr) => println!(r#"File "{}", line {}: {}"#, element.file, nr + 1, element.message),
-                        None => println!(r#"File "{}": {}"#, element.file, element.message)
+                        Some(nr) => println!(r#"Error in file "{}", line {}: {}"#, element.file, nr + 1, element.message),
+                        None => println!(r#"Error in file "{}": {}"#, element.file, element.message)
                     }
                 }
         }
@@ -105,23 +105,13 @@ fn read_assembly(file_name: &String) -> Result<String, String> {
     }
 }
 
-fn open_files(isa: &mut Option<ISA>, asm: &mut String, assembler_result: &mut AssemblerResult) -> (String, String) {
-    let mut isa_file_name = String::new();
+fn open_files(isa: &mut Option<ISA>, mut isa_file_name: &mut String, asm: &mut String,
+              mut asm_file_name: &mut String, assembler_result: &mut AssemblerResult) {
+
     println!("\nISA file name: ");
     stdin().read_line(&mut isa_file_name).unwrap();
-    isa_file_name = format!("ISA/{}", isa_file_name[0..isa_file_name.len() - 1].to_string());
+    *isa_file_name = "ISA/".to_string() + &isa_file_name[0..&isa_file_name.len() - 1].to_string();
     let isa_result = deserialize_json_file(&isa_file_name);
-
-    let mut asm_file_name = String::new();
-    println!("ASM file name: ");
-    stdin().read_line(&mut asm_file_name).unwrap();
-    asm_file_name = format!("ASM/{}", asm_file_name[0..asm_file_name.len() - 1].to_string());
-    let asm_result = read_assembly(&asm_file_name);
-
-    match asm_result {
-        Ok(v) => *asm = v,
-        Err(e) => assembler_result.fails.push(Error::no_line(&asm_file_name, e))
-    }
 
     match isa_result {
         Ok(v) => {
@@ -135,12 +125,23 @@ fn open_files(isa: &mut Option<ISA>, asm: &mut String, assembler_result: &mut As
         }
     }
 
-    return (isa_file_name, asm_file_name)
+    println!("ASM file name: ");
+    stdin().read_line(&mut asm_file_name).unwrap();
+    *asm_file_name = "ASM/".to_string() + &asm_file_name[0..&asm_file_name.len() - 1].to_string();
+    let asm_result = read_assembly(&asm_file_name);
+
+    match asm_result {
+        Ok(v) => *asm = v,
+        Err(e) => assembler_result.fails.push(Error::no_line(&asm_file_name, e))
+    }
 }
 
-fn parse(isa: &ISA, isa_file_name: &String, asm: &String, asm_file_name: &String, assembler_result: &mut AssemblerResult) {
+fn parse(isa: &ISA, isa_file_name: &String, asm: &String, asm_file_name: &String,
+         assembler_result: &mut AssemblerResult) {
+
     let mut asm_lines: Vec<String> = asm.split("\n").map(str::to_string).collect();
     for i in 0..asm_lines.len() {
+
         let line = asm_lines[i].trim();
         let mut tokens: Vec<&str> = line.split(|c| c == ',' || c == ' ').collect();
 
@@ -158,45 +159,12 @@ fn parse(isa: &ISA, isa_file_name: &String, asm: &String, asm_file_name: &String
 
         let mnemonic = tokens[0];
         if isa.instructions.contains_key(mnemonic) {
-            let instruction: &Instruction = &isa.instructions[mnemonic];
-
-            let mut binary = instruction.opcode.clone();
-
-            for j in 1..tokens.len() {
-                let operand = tokens[j].trim();
-
-                let operand_parsed: usize;
-                match operand.parse() {
-                    Ok(v) => operand_parsed = v,
-                    Err(_) => {
-                        assembler_result.fails.push(Error::in_line(&asm_file_name, &i,
-                        &format!(r#"Failed to parse operand "{}""#, operand)));
-                        continue;
-                    }
-                }
-
-                let operand_bin_template = instruction.operands[j - 1].trim();
-                let operand_bin_len = operand_bin_template.len();
-
-                let operand_bin;
-
-                if operand_bin_template.starts_with("-") {
-                    operand_bin = format!("{operand_parsed:b}");
-                }
-                else {
-                    let zero = "0";
-                    operand_bin = format!("{zero:0>0$}", operand_bin_len)
-                }
-
-                binary += &format!("{operand_bin:0>0$}", operand_bin_len);
-            }
-
-            println!("{}", binary);
-
+            //let operand_binary = format!("{operand_parsed:b>0$}", operand_bits);
         }
         else {
             assembler_result.fails.push(Error::in_line(&asm_file_name, &i,
                 &format!(r#"Unknown instruction mnemonic "{}""#, mnemonic)));
+            continue;
         }
     }
 }
@@ -209,9 +177,12 @@ pub fn assemble() {
         };
 
         let mut isa = None;
-        let mut asm = String::new();
+        let mut isa_file_name = String::new();
 
-        let (isa_file_name, asm_file_name) = open_files(&mut isa, &mut asm, &mut assembler_result);
+        let mut asm = String::new();
+        let mut asm_file_name = String::new();
+
+        open_files(&mut isa, &mut isa_file_name, &mut asm, &mut asm_file_name, &mut assembler_result);
 
         if assembler_result.fails.len() != 0 {
             assembler_result.report();
@@ -219,12 +190,13 @@ pub fn assemble() {
         }
 
         let isa = isa.unwrap();
-
         parse(&isa, &isa_file_name, &asm, &asm_file_name, &mut assembler_result);
 
         if assembler_result.fails.len() != 0 {
             assembler_result.report();
             continue;
         }
+
+
     }
 }
