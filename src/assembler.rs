@@ -143,17 +143,7 @@ fn parse(isa: &ISA, isa_file_name: &String, asm: &String, asm_file_name: &String
     for i in 0..asm_lines.len() {
 
         let line = asm_lines[i].trim();
-        let mut tokens: Vec<&str> = line.split(|c| c == ',' || c == ' ').collect();
-
-        let mut j = 0;
-        while j < tokens.len() {
-            if tokens[j] == "" {
-                tokens.remove(j);
-            }
-            else {
-                j += 1;
-            }
-        }
+        let mut tokens: Vec<&str> = line.split(|c| c == ',' || c == ' ').filter(|s| !s.is_empty()).collect();
 
         println!("{:?}", tokens);
 
